@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="custom-bg" class="custom-bg" aria-hidden="true"></div>
     <div class="bg-fx" aria-hidden="true"></div>
     <main class="app">
       <section class="panel">
@@ -47,7 +48,7 @@
             <li>Reach the far row to become a king (turn ends there).</li>
             <li>Kings move and capture diagonally forward and backward.</li>
             <li>You win if opponent has no legal moves.</li>
-            <li>Gold-ring squares are recommended targets; blue dots are legal targets for your selected piece.</li>
+            <li>Gold-ring squares are recommended targets for your <strong>selected</strong> piece; blue dots are legal targets for that piece.</li>
             <li>Piece colors match the standard board (red vs black); use <strong>You play as</strong> to sit on either side.</li>
           </ul>
         </details>
@@ -62,9 +63,19 @@
             <p class="yt-note">
               Playback uses YouTube’s official embed (audio comes from their stream). This page does not download or convert to MP3 — that would violate YouTube’s terms and isn’t appropriate for a static site.
             </p>
-            <p id="yt-file-protocol-warning" class="yt-file-protocol-warning" hidden role="note">
-              You opened this page from disk (<strong>file://</strong>). Browsers often block or break embedded YouTube players and third-party cookies in that mode. For reliable playback, serve this folder over <strong>http://localhost</strong> or host on <strong>HTTPS</strong>, or use <strong>Open in YouTube</strong> below to watch in a new tab.
-            </p>
+            <div id="yt-file-protocol-warning-row" class="yt-file-protocol-warning-row" hidden>
+              <p id="yt-file-protocol-warning" class="yt-file-protocol-warning" role="note">
+                You opened this page from disk (<strong>file://</strong>). Browsers often block or break embedded YouTube players and third-party cookies in that mode. For reliable playback, serve this folder over <strong>http://localhost</strong> or host on <strong>HTTPS</strong>, or use <strong>Open on YouTube (full player)</strong> below to watch in a new tab.
+              </p>
+              <button
+                type="button"
+                id="yt-file-protocol-dismiss"
+                class="yt-file-protocol-dismiss-btn"
+                aria-label="Dismiss file protocol notice"
+              >
+                Dismiss
+              </button>
+            </div>
             <div class="yt-field">
               <label for="yt-url-input">Paste video URL</label>
               <div class="yt-input-row">
@@ -102,10 +113,53 @@
               <button type="button" id="yt-clear-btn">Clear</button>
               <button type="button" id="yt-copy-tip-btn">Copy tip</button>
               <button type="button" id="yt-open-external-btn" class="yt-open-external-btn" hidden>
-                Open in YouTube
+                Open on YouTube (full player)
               </button>
             </div>
             <p class="yt-status" id="yt-status" role="status" aria-live="polite"></p>
+          </div>
+        </section>
+        <section class="bg-image-panel" id="bg-image-panel" aria-label="Custom background image">
+          <div class="bg-image-panel-toolbar">
+            <p class="bg-image-panel-title">Background image</p>
+            <button
+              type="button"
+              id="bg-image-minimize"
+              class="bg-image-minimize-btn"
+              aria-expanded="true"
+              aria-controls="bg-image-panel-body"
+            >
+              Hide panel
+            </button>
+          </div>
+          <div id="bg-image-panel-body" class="bg-image-panel-body">
+            <p class="bg-image-hint">
+              Optional image behind the ambient layers. Large files from disk are capped for storage (~3&nbsp;MB).
+            </p>
+            <div class="bg-image-field">
+              <label for="bg-url-input">Image URL</label>
+              <div class="bg-image-row">
+                <input
+                  id="bg-url-input"
+                  type="url"
+                  inputmode="url"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="https://…"
+                />
+                <button type="button" id="bg-apply-url-btn">Apply</button>
+              </div>
+            </div>
+            <div class="bg-image-field">
+              <label for="bg-file-input">Choose image file</label>
+              <input id="bg-file-input" type="file" accept="image/*" />
+            </div>
+            <div class="bg-image-actions">
+              <button type="button" id="bg-reset-default-btn" class="bg-image-reset-default-btn">
+                Reset to default background
+              </button>
+            </div>
+            <p class="bg-image-status" id="bg-image-status" role="status" aria-live="polite"></p>
           </div>
         </section>
       </section>
