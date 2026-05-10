@@ -86,6 +86,8 @@ function setHumanSide(next) {
   state = createInitialState();
   selected = null;
   botThinking = false;
+  pendingMoveAnimation = null;
+  clearMoveAnimationTimer();
   updateSideControls();
   updateGameSubtitle();
   render();
@@ -102,11 +104,42 @@ let state = createInitialState();
 let selected = null;
 let botThinking = false;
 
+/** @type {{ from: [number, number], to: [number, number] } | null} */
+let pendingMoveAnimation = null;
+let moveAnimCleanupTimer = null;
+
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_) {
+    return false;
+  }
+}
+
+function clearMoveAnimationTimer() {
+  if (moveAnimCleanupTimer != null) {
+    window.clearTimeout(moveAnimCleanupTimer);
+    moveAnimCleanupTimer = null;
+  }
+}
+
+function scheduleMoveAnimationCleanup() {
+  clearMoveAnimationTimer();
+  const ms = prefersReducedMotion() ? 16 : 560;
+  moveAnimCleanupTimer = window.setTimeout(() => {
+    moveAnimCleanupTimer = null;
+    pendingMoveAnimation = null;
+    render();
+  }, ms);
+}
+
 if (newGameBtn) {
   newGameBtn.addEventListener("click", () => {
     state = createInitialState();
     selected = null;
     botThinking = false;
+    pendingMoveAnimation = null;
+    clearMoveAnimationTimer();
     render();
   });
 }
@@ -119,6 +152,8 @@ if (undoBtn) {
     // Undo one full round when possible so it is usually your turn.
     state = restoreFromHistory(state, state.history.length >= 2 ? 2 : 1);
     selected = null;
+    pendingMoveAnimation = null;
+    clearMoveAnimationTimer();
     render();
   });
 }
@@ -412,6 +447,14 @@ function handleSquareClick(row, col) {
   const allMoves = generateAllMoves(state.board, humanPlayer, { enforceCapture: false });
 
   if (piece && piece.player === humanPlayer) {
+    if (selected && selected.row === row && selected.col === col) {
+      selected = null;
+      if (hintEl) {
+        hintEl.textContent = "";
+      }
+      render();
+      return;
+    }
     const pieceMoves = normalizeMovesForPiece(allMoves, row, col);
     if (pieceMoves.length === 0) {
       if (hintEl) {
@@ -421,7 +464,7 @@ function handleSquareClick(row, col) {
     } else {
       selected = { row, col, moves: pieceMoves };
       if (hintEl) {
-        hintEl.textContent = "Choose a highlighted target square. Gold-ring targets are suggested.";
+        hintEl.textContent = "Choose a highlighted target square. Gold-ring targets are suggested for this piece.";
       }
     }
     render();
@@ -434,14 +477,22 @@ function handleSquareClick(row, col) {
 
   const chosenMove = selected.moves.find((m) => sameCell(m.to, [row, col]));
   if (!chosenMove) {
+    /** Clicked somewhere that isn’t a legal destination — cancel selection (e.g. empty square). */
+    selected = null;
+    render();
     return;
   }
 
   saveToHistory(state);
+  pendingMoveAnimation = {
+    from: /** @type {[number, number]} */ (chosenMove.from.slice()),
+    to: /** @type {[number, number]} */ (chosenMove.to.slice()),
+  };
   state.board = applyMove(state.board, chosenMove);
   selected = null;
   endTurn();
   render();
+  scheduleMoveAnimationCleanup();
 }
 
 function endTurn() {
@@ -479,11 +530,16 @@ function runBotTurn() {
     }
 
     saveToHistory(state);
+    pendingMoveAnimation = {
+      from: /** @type {[number, number]} */ (move.from.slice()),
+      to: /** @type {[number, number]} */ (move.to.slice()),
+    };
     state.board = applyMove(state.board, move);
     botThinking = false;
     endTurn();
     render();
-  }, 250);
+    scheduleMoveAnimationCleanup();
+  }, 1000);
 }
 
 function chooseBotMove(board, player, depth) {
@@ -582,7 +638,11 @@ function render() {
     state.turn === humanPlayer && !state.winner ? generateAllMoves(state.board, humanPlayer, { enforceCapture: false }) : [];
   const suggestedMoves = state.turn === humanPlayer && !state.winner ? getSuggestedHumanMoves(state.board, legalMovesForHuman) : [];
   const selectedTargets = selected ? selected.moves.map((m) => m.to) : [];
-  const suggestedTargets = suggestedMoves.map((m) => m.to);
+  let suggestedTargets = [];
+  if (selected && state.turn === humanPlayer && !state.winner) {
+    const forSelectedPiece = suggestedMoves.filter((m) => sameCell(m.from, [selected.row, selected.col]));
+    suggestedTargets = forSelectedPiece.map((m) => m.to);
+  }
 
   for (let row = 0; row < BOARD_SIZE; row += 1) {
     for (let col = 0; col < BOARD_SIZE; col += 1) {
@@ -608,6 +668,20 @@ function render() {
         if (selected && selected.row === row && selected.col === col) {
           pieceEl.classList.add("selected");
         }
+        if (pendingMoveAnimation && sameCell(pendingMoveAnimation.to, [row, col])) {
+          const [fr, fc] = pendingMoveAnimation.from;
+          const [tr, tc] = pendingMoveAnimation.to;
+          const dr = tr - fr;
+          const dc = tc - fc;
+          const len = Math.max(Math.abs(dr), Math.abs(dc), 1);
+          const ndr = dr / len;
+          const ndc = dc / len;
+          pieceEl.style.setProperty("--piece-slide-x", String(-ndc));
+          pieceEl.style.setProperty("--piece-slide-y", String(-ndr));
+          if (!prefersReducedMotion()) {
+            pieceEl.classList.add("piece--just-moved");
+          }
+        }
         pieceEl.textContent = piece.king ? "K" : "";
         square.appendChild(pieceEl);
       }
@@ -623,12 +697,12 @@ function render() {
         if (suggestedMoves.length > 0) {
           const hasCaptureSuggestion = suggestedMoves.some((move) => move.captures.length > 0);
           const suggestionType = hasCaptureSuggestion ? "capture" : "move";
-          hintEl.textContent = `Suggested ${suggestionType} target(s): ${formatSuggestedMoves(suggestedMoves)}. You may choose any legal move.`;
+          hintEl.textContent = `Suggested ${suggestionType} target(s): ${formatSuggestedMoves(suggestedMoves)}. Select a piece to see gold rings on its best targets; you may choose any legal move.`;
         } else {
           hintEl.textContent = `Select one of your ${humanColorWord()} pieces.`;
         }
       } else {
-        hintEl.textContent = "Choose a highlighted target square. Gold-ring targets are suggested.";
+        hintEl.textContent = "Choose a highlighted target square. Gold-ring targets are suggested for this piece.";
       }
     } else if (!botThinking && !selected && !state.winner) {
       hintEl.textContent = "";
@@ -655,7 +729,9 @@ render();
   const clearBtn = document.getElementById("yt-clear-btn");
   const copyTipBtn = document.getElementById("yt-copy-tip-btn");
   const openExternalBtn = document.getElementById("yt-open-external-btn");
-  const fileProtocolWarning = document.getElementById("yt-file-protocol-warning");
+  const FILE_PROTOCOL_WARNING_STORAGE = "checkers-hide-file-protocol-warning";
+  const fileProtocolWarningRow = document.getElementById("yt-file-protocol-warning-row");
+  const fileProtocolDismissBtn = document.getElementById("yt-file-protocol-dismiss");
   const iframe = document.getElementById("yt-iframe");
   const pipWrap = document.getElementById("yt-pip-wrap");
   const ytStatus = document.getElementById("yt-status");
@@ -669,9 +745,26 @@ render();
 
   const isFileProtocol = window.location.protocol === "file:";
 
-  if (fileProtocolWarning) {
-    fileProtocolWarning.hidden = !isFileProtocol;
+  if (fileProtocolWarningRow) {
+    const dismissed = sessionStorage.getItem(FILE_PROTOCOL_WARNING_STORAGE) === "1";
+    const show = isFileProtocol && !dismissed;
+    fileProtocolWarningRow.hidden = !show;
+    if (show) {
+      fileProtocolWarningRow.removeAttribute("aria-hidden");
+    } else {
+      fileProtocolWarningRow.setAttribute("aria-hidden", "true");
+    }
   }
+
+  fileProtocolDismissBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    sessionStorage.setItem(FILE_PROTOCOL_WARNING_STORAGE, "1");
+    if (fileProtocolWarningRow) {
+      fileProtocolWarningRow.hidden = true;
+      fileProtocolWarningRow.setAttribute("hidden", "");
+      fileProtocolWarningRow.setAttribute("aria-hidden", "true");
+    }
+  });
 
   /**
    * @param {string} raw
@@ -752,7 +845,7 @@ render();
 
   function loadedSuccessStatus() {
     if (isFileProtocol) {
-      return "Loaded. Embedded playback often fails when this page is opened as file:// — use a local server or HTTPS, or tap Open in YouTube.";
+      return "Loaded. Embedded playback often fails when this page is opened as file:// — use a local server or HTTPS, or tap Open on YouTube (full player).";
     }
     return "Loaded. Use the on-screen player for play, pause, and volume (YouTube’s stream, not a downloaded file).";
   }
@@ -836,7 +929,7 @@ render();
   iframe.addEventListener("error", () => {
     pipWrap.classList.add("yt-pip--embed-error");
     setStatus(
-      "The embedded player failed to load. Try Open in YouTube, or serve this folder over http://localhost or HTTPS (file:// often blocks embeds)."
+      "The embedded player failed to load. Try Open on YouTube (full player), or serve this folder over http://localhost or HTTPS (file:// often blocks embeds)."
     );
   });
 
@@ -872,4 +965,158 @@ render();
   }
 
   setLoaded(false);
+})();
+
+const STORAGE_BG_IMAGE_KEY = "checkers-bg-image";
+/** 3 MB cap for stored data URLs (FileReader / localStorage) */
+const MAX_BG_IMAGE_STORAGE_BYTES = 3 * 1024 * 1024;
+
+(function setupCustomBackground() {
+  const panel = document.getElementById("bg-image-panel");
+  const minBtn = document.getElementById("bg-image-minimize");
+  const layer = document.getElementById("custom-bg");
+  const urlInput = document.getElementById("bg-url-input");
+  const applyUrlBtn = document.getElementById("bg-apply-url-btn");
+  const fileInput = document.getElementById("bg-file-input");
+  const resetDefaultBtn = document.getElementById("bg-reset-default-btn");
+  const statusEl = document.getElementById("bg-image-status");
+  const bgFx = document.querySelector(".bg-fx");
+
+  if (!layer) {
+    return;
+  }
+
+  if (minBtn && panel) {
+    minBtn.addEventListener("click", () => {
+      const collapsed = panel.classList.toggle("bg-image-panel--collapsed");
+      minBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      minBtn.textContent = collapsed ? "Show panel" : "Hide panel";
+    });
+  }
+
+  function setStatus(msg) {
+    if (statusEl) {
+      statusEl.textContent = msg || "";
+    }
+  }
+
+  function applyBackground(urlOrDataUrl) {
+    const v = String(urlOrDataUrl || "").trim();
+    if (!v) {
+      layer.classList.remove("custom-bg--active");
+      layer.style.backgroundImage = "";
+      return;
+    }
+    layer.style.backgroundImage = `url(${JSON.stringify(v)})`;
+    layer.classList.add("custom-bg--active");
+  }
+
+  function persistAndApply(stored) {
+    try {
+      localStorage.setItem(STORAGE_BG_IMAGE_KEY, stored);
+    } catch (_) {
+      setStatus("Could not save background (private mode or storage full). Image may apply for this session only.");
+      applyBackground(stored);
+      return;
+    }
+    applyBackground(stored);
+    setStatus("Background saved.");
+  }
+
+  function loadStored() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORAGE_BG_IMAGE_KEY);
+    } catch (_) {
+      raw = null;
+    }
+    if (!raw) {
+      return;
+    }
+    applyBackground(raw);
+  }
+
+  function resetToDefaultBackground() {
+    try {
+      localStorage.removeItem(STORAGE_BG_IMAGE_KEY);
+    } catch (_) {
+      /* private mode */
+    }
+    if (urlInput) {
+      urlInput.value = "";
+    }
+    if (fileInput) {
+      fileInput.value = "";
+    }
+    layer.classList.remove("custom-bg--active");
+    layer.removeAttribute("style");
+    if (bgFx) {
+      bgFx.removeAttribute("style");
+    }
+    setStatus("Restored default background.");
+  }
+
+  if (applyUrlBtn && urlInput) {
+    applyUrlBtn.addEventListener("click", () => {
+      const raw = urlInput.value.trim();
+      if (!raw) {
+        setStatus("Enter an image URL.");
+        return;
+      }
+      if (!/^https?:\/\//i.test(raw)) {
+        setStatus("Use a full URL starting with http:// or https://.");
+        return;
+      }
+      persistAndApply(raw);
+    });
+    urlInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyUrlBtn.click();
+      }
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        return;
+      }
+      if (file.size > MAX_BG_IMAGE_STORAGE_BYTES) {
+        setStatus(
+          `File is too large to store (~${(MAX_BG_IMAGE_STORAGE_BYTES / (1024 * 1024)).toFixed(1)} MB max). Use a smaller image or paste an HTTPS image URL.`
+        );
+        fileInput.value = "";
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          setStatus("Could not read that file.");
+          return;
+        }
+        if (result.length > MAX_BG_IMAGE_STORAGE_BYTES) {
+          setStatus("Encoded image exceeds storage limit. Try a smaller file or an image URL.");
+          fileInput.value = "";
+          return;
+        }
+        persistAndApply(result);
+        fileInput.value = "";
+      };
+      reader.onerror = () => {
+        setStatus("Could not read that file.");
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (resetDefaultBtn) {
+    resetDefaultBtn.addEventListener("click", () => {
+      resetToDefaultBackground();
+    });
+  }
+
+  loadStored();
 })();
