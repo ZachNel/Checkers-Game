@@ -44,6 +44,8 @@ body {
   margin: 0;
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
+  z-index: 0;
   font-family: var(--font-ui);
   font-size: 1rem;
   line-height: 1.45;
@@ -55,11 +57,39 @@ body {
   background-attachment: fixed;
 }
 
+/* Optional photo layer — below .bg-fx grain, above body gradient */
+.custom-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.custom-bg.custom-bg--active {
+  opacity: 1;
+}
+
+.custom-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(165deg, rgba(8, 7, 6, 0.48) 0%, rgba(12, 10, 8, 0.38) 45%, rgba(6, 5, 4, 0.52) 100%);
+  pointer-events: none;
+}
+
 /* Ambient background — sits behind all content, never interactive.
-   Slow “light” breathing (opacity) + tiny positional drift; chunky grain tile for lo-fi texture. */
+   Warm brass wash + soft aurora bands (teal / emerald / violet), heavily blurred;
+   slow breathing + drift; grain + optional ribbon curtain on ::after. */
 .bg-fx {
   position: fixed;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
   overflow: hidden;
   contain: strict;
@@ -68,18 +98,24 @@ body {
 .bg-fx::before {
   content: "";
   position: absolute;
-  inset: -14%;
+  inset: -24%;
+  /* First layers paint on top — aurora ellipses over walnut warmth */
   background:
-    radial-gradient(closest-side at 28% 30%, rgba(244, 208, 111, 0.16), transparent 62%),
-    radial-gradient(closest-side at 74% 68%, rgba(176, 108, 58, 0.15), transparent 66%),
-    radial-gradient(closest-side at 50% 50%, rgba(120, 80, 50, 0.09), transparent 70%);
-  filter: blur(44px);
-  /* Soft outer glow — opacity animated in bg-light so the halo breathes, not slides */
+    radial-gradient(ellipse 110% 85% at 14% 18%, rgba(72, 200, 175, 0.11), transparent 58%),
+    radial-gradient(ellipse 95% 70% at 88% 42%, rgba(140, 105, 205, 0.085), transparent 55%),
+    radial-gradient(ellipse 100% 80% at 52% 88%, rgba(45, 185, 135, 0.075), transparent 62%),
+    radial-gradient(ellipse 90% 55% at 72% 12%, rgba(90, 160, 210, 0.055), transparent 52%),
+    radial-gradient(closest-side at 28% 30%, rgba(244, 208, 111, 0.17), transparent 62%),
+    radial-gradient(closest-side at 74% 68%, rgba(176, 108, 58, 0.165), transparent 66%),
+    radial-gradient(closest-side at 50% 50%, rgba(120, 80, 50, 0.1), transparent 70%);
+  filter: blur(54px);
+  /* Halo: brass + whisper of cool aurora so edges match the interior bands */
   box-shadow:
-    0 0 120px 60px rgba(255, 210, 140, 0.06),
-    0 0 200px 100px rgba(180, 100, 55, 0.035);
+    0 0 100px 55px rgba(90, 190, 175, 0.04),
+    0 0 130px 65px rgba(255, 210, 140, 0.078),
+    0 0 200px 100px rgba(180, 100, 55, 0.045);
   opacity: 0.92;
-  animation: bg-light 70s ease-in-out infinite;
+  animation: bg-light 30s ease-in-out infinite;
   will-change: transform, opacity;
 }
 
@@ -87,48 +123,94 @@ body {
   content: "";
   position: absolute;
   inset: -4px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch' seed='4'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.82  0 0 0 0 0.62  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  background-size: 180px 180px;
-  opacity: 0.085;
+  /* Layer 1: grain (top). Layer 2: low-opacity aurora curtain ribbons — moves via bg-ribbon only */
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch' seed='4'/><feColorMatrix values='0 0 0 0 0.96  0 0 0 0 0.82  0 0 0 0 0.62  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"),
+    repeating-linear-gradient(
+      100deg,
+      transparent 0,
+      transparent 46px,
+      rgba(100, 210, 195, 0.045) 52px,
+      rgba(130, 150, 230, 0.055) 58px,
+      rgba(70, 200, 160, 0.042) 64px,
+      transparent 74px,
+      transparent 140px
+    );
+  background-size: 200px 200px, 240% 18%;
+  background-position: 0 0, 12% 36%;
+  background-repeat: repeat, no-repeat;
+  opacity: 0.11;
   mix-blend-mode: overlay;
   image-rendering: pixelated;
-  animation: bg-grain 11s steps(8, end) infinite;
-  will-change: transform, opacity;
+  animation:
+    bg-grain 4.8s steps(12, end) infinite,
+    bg-ribbon 44s ease-in-out infinite;
+  will-change: transform, opacity, background-position;
 }
 
-/* Lighting-first: opacity + micro-transform; long periods so motion reads as warm air, not panning */
+/* Lighting + aurora drift in one keyframe (single transform stack). Slightly bolder motion, still lounge-slow. */
 @keyframes bg-light {
   0% {
-    opacity: 0.7;
-    transform: translate3d(-0.6%, -0.35%, 0) scale(1.015);
+    opacity: 0.52;
+    transform: translate3d(-1.65%, -1.05%, 0) scale(1.018) rotate(-0.55deg);
   }
-  22% {
+  20% {
     opacity: 1;
-    transform: translate3d(0.45%, 0.55%, 0) scale(1.03);
+    transform: translate3d(1.25%, 1.18%, 0) scale(1.058) rotate(0.58deg);
   }
-  48% {
-    opacity: 0.82;
-    transform: translate3d(0.25%, -0.4%, 0) scale(1.022);
+  44% {
+    opacity: 0.68;
+    transform: translate3d(0.72%, -1.12%, 0) scale(1.036) rotate(0.18deg);
   }
-  72% {
-    opacity: 0.98;
-    transform: translate3d(-0.35%, 0.35%, 0) scale(1.034);
+  68% {
+    opacity: 0.96;
+    transform: translate3d(-1.08%, 0.88%, 0) scale(1.046) rotate(-0.42deg);
   }
   100% {
-    opacity: 0.7;
-    transform: translate3d(-0.6%, -0.35%, 0) scale(1.015);
+    opacity: 0.52;
+    transform: translate3d(-1.65%, -1.05%, 0) scale(1.018) rotate(-0.55deg);
   }
 }
 
 @keyframes bg-grain {
-  0%   { transform: translate(0, 0); opacity: 0.085; }
-  25%  { transform: translate(-1.5px, 1.5px); opacity: 0.078; }
-  50%  { transform: translate(1.5px, -1.5px); opacity: 0.092; }
-  75%  { transform: translate(-1.5px, -1.5px); opacity: 0.08; }
-  100% { transform: translate(0, 0); opacity: 0.085; }
+  0% {
+    transform: translate(0, 0);
+    opacity: 0.11;
+  }
+  25% {
+    transform: translate(-3.5px, 3px);
+    opacity: 0.078;
+  }
+  50% {
+    transform: translate(3.5px, -3px);
+    opacity: 0.125;
+  }
+  75% {
+    transform: translate(-3px, -3.5px);
+    opacity: 0.082;
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 0.11;
+  }
+}
+
+/* Horizontal ribbon drift — effective veil stays ~4–12% via blend + low alphas above */
+@keyframes bg-ribbon {
+  0% {
+    background-position: 0 0, 8% 34%;
+  }
+  50% {
+    background-position: 0 0, 92% 41%;
+  }
+  100% {
+    background-position: 0 0, 8% 34%;
+  }
 }
 
 .app {
+  position: relative;
+  z-index: 2;
   width: 100%;
   max-width: 1040px;
   margin: 0 auto;
@@ -420,15 +502,38 @@ button:focus-visible {
   font-weight: 700;
 }
 
-.yt-file-protocol-warning {
-  margin: 0;
+.yt-file-protocol-warning-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
+  background: rgba(120, 70, 20, 0.35);
+  border: 1px solid rgba(244, 208, 111, 0.35);
+}
+
+/* Our flex layout must not beat the HTML hidden attribute (Dismiss must fully hide the row). */
+.yt-file-protocol-warning-row[hidden] {
+  display: none !important;
+}
+
+.yt-file-protocol-warning {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.78rem;
   line-height: 1.45;
   color: rgba(255, 224, 160, 0.95);
-  background: rgba(120, 70, 20, 0.35);
-  border: 1px solid rgba(244, 208, 111, 0.35);
+}
+
+.yt-file-protocol-dismiss-btn {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  padding: 5px 10px;
+  border-radius: 8px;
+  min-width: auto;
+  align-self: flex-start;
 }
 
 .yt-file-protocol-warning strong {
@@ -567,6 +672,141 @@ button:focus-visible {
   font-size: 0.8rem;
   color: rgba(160, 220, 255, 0.9);
   min-height: 1.25em;
+}
+
+/* Custom background controls — below YouTube panel */
+.bg-image-panel {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(212, 175, 122, 0.12);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bg-image-panel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.bg-image-panel-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: rgba(244, 208, 111, 0.95);
+  letter-spacing: 0.02em;
+}
+
+.bg-image-minimize-btn {
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  min-width: auto;
+}
+
+.bg-image-panel-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.bg-image-panel--collapsed .bg-image-panel-body {
+  display: none;
+}
+
+.bg-image-hint {
+  margin: -4px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.bg-image-field label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.bg-image-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.bg-image-row input[type="url"] {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 0.88rem;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 122, 0.28);
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.bg-image-row input:focus-visible {
+  outline: 2px solid var(--accent-select);
+  outline-offset: 2px;
+}
+
+.bg-image-row button {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  padding: 9px 14px;
+  border-radius: 8px;
+}
+
+.bg-image-field input[type="file"] {
+  max-width: 100%;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.bg-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.bg-image-actions button {
+  font-size: 0.85rem;
+  padding: 8px 14px;
+  border-radius: 8px;
+}
+
+.bg-image-reset-default-btn {
+  flex: 1 1 auto;
+  min-width: min(100%, 14rem);
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  border-color: rgba(244, 208, 111, 0.48);
+  background: linear-gradient(180deg, #443a32 0%, #2c251f 100%);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.bg-image-reset-default-btn:hover {
+  border-color: rgba(244, 208, 111, 0.65);
+}
+
+.bg-image-status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: rgba(160, 220, 255, 0.85);
+  min-height: 1.2em;
 }
 
 /* Board frame — subtle ambient drift + grain (like .bg-fx), behind squares only */
@@ -792,7 +1032,7 @@ button:focus-visible {
     box-shadow 0.15s ease;
 }
 
-.square:hover .piece {
+.square:hover .piece:not(.piece--just-moved) {
   transform: scale(1.03);
 }
 
@@ -823,6 +1063,24 @@ button:focus-visible {
     0 6px 18px rgba(94, 200, 255, 0.35),
     inset 0 3px 6px rgba(255, 255, 255, 0.25),
     inset 0 -4px 8px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes piece-slide-in {
+  from {
+    transform: translate(
+      calc(var(--piece-slide-x, 0) * min(52%, 3.2rem)),
+      calc(var(--piece-slide-y, 0) * min(52%, 3.2rem))
+    );
+    opacity: 0.82;
+  }
+  to {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+}
+
+.piece.piece--just-moved {
+  animation: piece-slide-in 0.52s ease-out both;
 }
 
 @media (min-width: 900px) {
@@ -895,15 +1153,17 @@ button:focus-visible {
     will-change: auto;
   }
 
-  /* Static middle ground: visible ambient fill without motion */
+  /* Static wash: brass warmth + aurora tint, no drift */
   .bg-fx::before {
-    opacity: 0.9;
-    transform: translate3d(0, 0, 0) scale(1.022);
+    opacity: 0.89;
+    transform: translate3d(0, 0, 0) scale(1.032) rotate(0deg);
   }
 
   .bg-fx::after {
-    opacity: 0.08;
+    opacity: 0.09;
     transform: none;
+    /* Freeze ribbon mid-field (still subtle behind grain) */
+    background-position: 0 0, 48% 38%;
   }
 
   .board-wrap::before,
@@ -920,5 +1180,9 @@ button:focus-visible {
   .board-wrap::after {
     opacity: 0.034;
     transform: none;
+  }
+
+  .piece.piece--just-moved {
+    animation: none;
   }
 }
